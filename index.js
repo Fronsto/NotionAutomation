@@ -17,12 +17,14 @@ const notion = new Client({
 
 const db_id=process.env.NOTION_DB_ID;
 
+// For getting the contest list, we first create the strings containing dates for now and 2 days later
 let now=new Date();
 now=`${now.getUTCFullYear()}-${now.getUTCMonth()+1}-${now.getUTCDate()}T${now.getUTCHours()}%3A00`
 let tomorrow=new Date();
 tomorrow.setDate(tomorrow.getDate()+2);
 tomorrow=`${tomorrow.getUTCFullYear()}-${tomorrow.getUTCMonth()+1}-${tomorrow.getUTCDate()}T${tomorrow.getUTCHours()}%3A00`
 
+// Calls clist's API
 getFutureContests = async () => {
     try{
         const url= `https://clist.by/api/v2/contest/?username=${process.env.CLIST_USER}&api_key=${process.env.CLIST_API_KEY}&start__gt=${now}&end__lt=${tomorrow}`;
@@ -34,8 +36,10 @@ getFutureContests = async () => {
     }
 }
 
+// Given an object obj, this calls notion's API and add it to DB.
 async function addItem(obj) {
   try{
+    let ftime=new Date(obj.start+'Z');
     const response = await notion.pages.create({
         parent: { database_id: db_id },
         properties: {
@@ -57,6 +61,17 @@ async function addItem(obj) {
                     type: 'text',
                     text: {
                         content: obj.start,
+                    },
+                },
+                ],
+            },
+            'LocalTime': {
+                type: 'rich_text',
+                rich_text: [
+                {
+                    type: 'text',
+                    text: {
+                        content: `${ftime.toLocaleString()}`,
                     },
                 },
                 ],
@@ -83,6 +98,7 @@ async function addItem(obj) {
   }
 }
 
+// Removes outdated entries, and get list of contest ids of those in DB, so as to prevent redundancy
 precheck = async () => {
     try{
 
@@ -90,9 +106,9 @@ precheck = async () => {
         database_id: db_id,
     });
     let id_array =[]
+    curr_time = new Date();
     result.results.forEach((pg)=>{
-        obj_time = new Date(pg.properties.Time.rich_text[0].text.content);
-        curr_time = new Date();
+        obj_time = new Date(pg.properties.Time.rich_text[0].text.content+'Z');
         if(obj_time<curr_time){
             notion.pages.update({
                 page_id: pg.id,
@@ -112,6 +128,8 @@ precheck = async () => {
 
 }
 
+// @@param: the object recieved from clist API
+// first call precheck, then adds contests not already present in DB.
 updateNotion =async (liste) => {
     try{
         const id_list= await precheck();
@@ -137,12 +155,14 @@ updateNotion =async (liste) => {
     }
 }
 
+
 main = async () => {
     const liste = await getFutureContests();
     const result = await updateNotion(liste);
     console.log(result);
 };
 
+// for testing purposes
 app.get("/api", async function(req, res){
     try{
         const respone = await notion.databases.query({
