@@ -11,28 +11,31 @@ app.use(express.urlencoded({extended:true}));
 app.use(express.json());
 app.use(express.static("public"));
 
+//////////////////////////////////////////
 const notion = new Client({
     auth: process.env.NOTION_TOKEN
 });
 
 const db_id=process.env.NOTION_DB_ID;
+//////////////////////////////////////////
 
 // For getting the contest list, we first create the strings containing dates for now and 2 days later
 let now=new Date();
-now=`${now.getUTCFullYear()}-${now.getUTCMonth()+1}-${now.getUTCDate()}T${now.getUTCHours()}%3A00`
+now=`${now.getUTCFullYear()}-${now.getUTCMonth()+1}-${now.getUTCDate()}T${now.getUTCHours()}%3A${now.getUTCMinutes()}`
 let tomorrow=new Date();
 tomorrow.setDate(tomorrow.getDate()+2);
-tomorrow=`${tomorrow.getUTCFullYear()}-${tomorrow.getUTCMonth()+1}-${tomorrow.getUTCDate()}T${tomorrow.getUTCHours()}%3A00`
+tomorrow=`${tomorrow.getUTCFullYear()}-${tomorrow.getUTCMonth()+1}-${tomorrow.getUTCDate()}T${tomorrow.getUTCHours()}%3A${tomorrow.getUTCMinutes()}`
 
 // Calls clist's API
 getFutureContests = async () => {
     try{
         const url= `https://clist.by/api/v2/contest/?username=${process.env.CLIST_USER}&api_key=${process.env.CLIST_API_KEY}&start__gt=${now}&end__lt=${tomorrow}`;
         const res = await fetch(url).then(res => res.json());
+        console.log(res.objects[0])
         return res.objects;
     }
     catch(err){
-        return err.message;
+        console.log(err.message);
     }
 }
 
@@ -128,7 +131,7 @@ precheck = async () => {
 
 }
 
-// @@param: the object recieved from clist API
+// @param: the object recieved from clist API
 // first call precheck, then adds contests not already present in DB.
 updateNotion =async (liste) => {
     try{
