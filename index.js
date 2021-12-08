@@ -1,19 +1,11 @@
-const dotenv = require('dotenv').config();
+// Dependencies:
 const {Client} = require('@notionhq/client');
-const { response } = require('express');
-
-const express = require('express');
-const app = express();
-
 const fetch = require('node-fetch');
-
-app.use(express.urlencoded({extended:true}));
-app.use(express.json());
-app.use(express.static("public"));
-
 //////////////////////////////////////////
+// Creating the Notion client:
 const notion = new Client({
-    auth: process.env.NOTION_TOKEN
+    auth: process.env.NOTION_TOKEN,
+    notionVersion: "2021-08-16"
 });
 
 const db_id=process.env.NOTION_DB_ID;
@@ -31,7 +23,6 @@ getFutureContests = async () => {
     try{
         const url= `https://clist.by/api/v2/contest/?username=${process.env.CLIST_USER}&api_key=${process.env.CLIST_API_KEY}&start__gt=${now}&end__lt=${tomorrow}`;
         const res = await fetch(url).then(res => res.json());
-        console.log(res.objects[0])
         return res.objects;
     }
     catch(err){
@@ -39,6 +30,7 @@ getFutureContests = async () => {
     }
 }
 
+////////////////////////////////////////
 // Given an object obj, this calls notion's API and add it to DB.
 async function addItem(obj) {
   try{
@@ -108,20 +100,26 @@ precheck = async () => {
     const result = await notion.databases.query({
         database_id: db_id,
     });
-    let id_array =[]
+    let id_array =[];
     curr_time = new Date();
-    result.results.forEach((pg)=>{
-        obj_time = new Date(pg.properties.Time.rich_text[0].text.content+'Z');
-        if(obj_time<curr_time){
-            notion.pages.update({
-                page_id: pg.id,
-                archived: true
-            })
-            console.log("removed this page")
-            console.log(pg.properties.Name.title[0].text.content)
-        } else {
-            id_array.push(pg.properties.contest_id.number);
-        }
+    result.results.forEach(
+        async (pg)=>{
+        try{
+            obj_time = new Date(pg.properties.Time.rich_text[0].text.content+'Z');
+            if(obj_time<curr_time){
+                console.log("removed this page");
+                console.log(pg.properties.Name.title[0].text.content);
+                const response = await notion.pages.update({
+                    page_id: pg.id,
+                    archived: true,
+                });
+                console.log(response);
+            } else {
+                id_array.push(pg.properties.contest_id.number);
+            }
+        } catch(err){
+            console.log(err)
+        } 
     })
     return id_array ;
     }
@@ -158,6 +156,7 @@ updateNotion =async (liste) => {
     }
 }
 
+// Starts the execution:
 
 main = async () => {
     const liste = await getFutureContests();
@@ -165,20 +164,49 @@ main = async () => {
     console.log(result);
 };
 
-// for testing purposes
-app.get("/api", async function(req, res){
-    try{
-        const respone = await notion.databases.query({
-            database_id: db_id,
-        });
-        res.send(respone);
-    }
-    catch(err){
-        return err;
-    }
+// Implementing chrome alarms to call main periodically:
+
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('onInstalled....');
+  scheduleRequest();
+  scheduleWatchdog();
+  main();
 });
 
-app.listen(3000 || process.env.PORT, () => {
-    console.log("Server is up and running");
-    main();
+// fetch and save data when chrome restarted, alarm will continue running when chrome is restarted
+chrome.runtime.onStartup.addListener(() => {
+  console.log('onStartup....');
+  main();
 });
+
+// alarm listener
+chrome.alarms.onAlarm.addListener(alarm => {
+  // if watchdog is triggered, check whether refresh alarm is there
+  if (alarm && alarm.name === 'watchdog') {
+    chrome.alarms.get('refresh', alarm => {
+      if (alarm) {
+        console.log('Refresh alarm exists. Yay.');
+      } else {
+        // if it is not there, start a new request and reschedule refresh alarm
+        console.log("Refresh alarm doesn't exist, starting a new one");
+        main();
+        scheduleRequest();
+      }
+    });
+  } else {
+    // if refresh alarm triggered, start a new request
+    main();
+  }
+});
+
+// schedule a new fetch every 30 minutes
+function scheduleRequest() {
+  console.log('schedule refresh alarm to 30 minutes...');
+  chrome.alarms.create('refresh', { periodInMinutes: 60 });
+}
+
+// schedule a watchdog check every 5 minutes
+function scheduleWatchdog() {
+  console.log('schedule watchdog alarm to 5 minutes...');
+  chrome.alarms.create('watchdog', { periodInMinutes: 10 });
+}

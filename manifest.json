@@ -1,0 +1,11 @@
+{
+    "manifest_version": 2,
+    "name": "Notion-CC Auto-Update",
+    "description": "Auto update a notion database with the list of upcoming coding contests",
+    "version": "0.1.0",
+    "background":{
+        "scripts": ["awesome.js"],
+        "persistent": false
+    },
+    "permissions": ["alarms"]
+}
